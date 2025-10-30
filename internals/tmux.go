@@ -2,9 +2,11 @@ package internals
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 type Session struct {
@@ -48,10 +50,14 @@ func RenameSession(old string, new string) {
 }
 
 func AttachSession(name string) {
-	cmd := exec.Command("tmux", "attach-session", "-t", name)
-	_, err := cmd.CombinedOutput()
+	path, err := exec.LookPath("tmux")
 	if err != nil {
-		fmt.Println("Error: ", err)
+		fmt.Println("Error finding tmux:", err)
+		return
+	}
+	err = syscall.Exec(path, []string{"tmux", "attach-session", "-t", name}, os.Environ())
+	if err != nil {
+		fmt.Println("Error attaching to session:", err)
 	}
 }
 
