@@ -190,10 +190,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.mode == modeNormal {
-		var cmd1, cmd2 tea.Cmd
+		var cmd1 tea.Cmd
 		m.sessionList, cmd1 = m.sessionList.Update(msg)
-		m.windowList, cmd2 = m.windowList.Update(msg)
-		cmds = append(cmds, cmd1, cmd2)
+		cmds = append(cmds, cmd1)
 
 		// Check if session selection changed
 		if m.sessionList.Index() >= 0 && m.sessionList.Index() < len(m.sessions) {
@@ -260,13 +259,9 @@ func (m model) View() string {
 
 		// Render compact window list
 		rightLines := []string{windowTitle}
-		for i, w := range m.windows {
-			prefix := "  "
-			if m.windowList.Index() == i {
-				prefix = "> "
-			}
-			// Show index and name compactly
-			rightLines = append(rightLines, prefix+fmt.Sprintf("%d: %s", w.Index, w.Name))
+		for _, w := range m.windows {
+			// Show index and name compactly without selection indicator
+			rightLines = append(rightLines, fmt.Sprintf("%d: %s", w.Index, w.Name))
 		}
 		right := strings.Join(rightLines, "\n")
 
