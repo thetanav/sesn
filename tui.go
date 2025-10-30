@@ -99,13 +99,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		listHeight := 10
-		if msg.Height < 10 {
-			listHeight = msg.Height
+		// Reserve one line for header
+		bodyHeight := msg.Height - 1
+		if bodyHeight < 1 {
+			bodyHeight = 1
 		}
-		halfHeight := listHeight / 2
-		m.sessionList.SetSize(msg.Width, halfHeight)
-		m.windowList.SetSize(msg.Width, halfHeight)
+		// Split width into two columns with a 1-column divider
+		leftW := msg.Width / 2
+		if leftW < 10 {
+			leftW = 10
+		}
+		rightW := msg.Width - leftW - 1
+		if rightW < 10 {
+			rightW = 10
+		}
+		m.sessionList.SetSize(leftW, bodyHeight)
+		m.windowList.SetSize(rightW, bodyHeight)
 	case sessionsMsg:
 		m.sessions = msg.sessions
 		items := make([]list.Item, len(m.sessions))
@@ -132,7 +141,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.mode {
 		case modeNormal:
 			switch msg.String() {
-			case "q", "ctrl+c":
+			case "ctrl+c":
 				return m, tea.Quit
 			case "c":
 				m.mode = modeCreate
@@ -202,12 +211,71 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// truncateLines truncates each line in s to maxWidth runes.
+func truncateLines(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		r := []rune(line)
+		if len(r) > maxWidth {
+			out = append(out, string(r[:maxWidth]))
+		} else {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
 func (m model) View() string {
 	if m.mode == modeNormal {
-		header := "c: create  d: delete  r: rename  k: kill  enter: attach  q: quit"
-		sessionView := m.sessionList.View()
-		windowView := m.windowList.View()
-		body := lipgloss.JoinVertical(lipgloss.Left, sessionView, windowView)
+		header := "c: create  d: delete  r: rename  k: kill  enter: attach"
+
+		// Determine column widths (fall back if not set yet)
+		leftW := m.width/2
+		if leftW <= 0 {
+			leftW = 30
+		}
+		rightW := m.width - leftW - 1
+		if rightW <= 0 {
+			rightW = 30
+		}
+
+		// Compose titled columns
+		sessionTitle := lipgloss.NewStyle().Bold(true).Render("sessions")
+		windowTitle := lipgloss.NewStyle().Bold(true).Render("windows")
+
+		// Render compact session list (one line per session, minimal padding)
+		leftLines := []string{sessionTitle}
+		for i, s := range m.sessions {
+			prefix := "  "
+			if m.sessionList.Index() == i {
+				prefix = "> "
+			}
+			leftLines = append(leftLines, prefix+s.Name)
+		}
+		left := strings.Join(leftLines, "\n")
+
+		// Render compact window list
+		rightLines := []string{windowTitle}
+		for i, w := range m.windows {
+			prefix := "  "
+			if m.windowList.Index() == i {
+				prefix = "> "
+			}
+			// Show index and name compactly
+			rightLines = append(rightLines, prefix+fmt.Sprintf("%d: %s", w.Index, w.Name))
+		}
+		right := strings.Join(rightLines, "\n")
+
+		// Ensure each column renders within its width
+	// Truncate each column to its width to keep layout compact
+	leftStyled := lipgloss.NewStyle().Width(leftW).Align(lipgloss.Left).Render(truncateLines(left, leftW))
+	rightStyled := lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(truncateLines(right, rightW))
+
+		body := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
 		return header + "\n" + body
 	} else {
 		var prompt string

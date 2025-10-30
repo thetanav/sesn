@@ -29,7 +29,6 @@ func CreateSession(name string) {
 	if err != nil {
 		fmt.Println("Error: ", err)
 	}
-	fmt.Println("Session create named: ", name)
 }
 
 func DeleteSession(name string) {
@@ -38,7 +37,6 @@ func DeleteSession(name string) {
 	if err != nil {
 		fmt.Println("Error: ", err)
 	}
-	fmt.Println("Session killed name: ", name)
 }
 
 func RenameSession(old string, new string) {
@@ -47,7 +45,6 @@ func RenameSession(old string, new string) {
 	if err != nil {
 		fmt.Println("Error", err)
 	}
-	fmt.Println("Session renamed to: ", new)
 }
 
 func AttachSession(name string) {
