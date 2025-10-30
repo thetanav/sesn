@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"tmuxly/internals"
+	"sesn/internals"
 )
 
 type item struct {
@@ -230,6 +230,11 @@ func truncateLines(s string, maxWidth int) string {
 
 func (m model) View() string {
 	if m.mode == modeNormal {
+		ascii := `  ___  ___  ___ _ __  
+ / __|/ _ \/ __| '_ \ 
+ \__ \  __/\__ \ | | |
+ |___/\___||___/_| |_|
+`
 		header := "c: create  d: delete  r: rename  k: kill  enter: attach"
 
 		// Determine column widths (fall back if not set yet)
@@ -271,7 +276,7 @@ func (m model) View() string {
 	rightStyled := lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(truncateLines(right, rightW))
 
 		body := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
-		return header + "\n" + body
+		return ascii + "\n" + header + "\n" + body
 	} else {
 		var prompt string
 		if m.mode == modeCreate {

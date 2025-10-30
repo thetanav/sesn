@@ -1,0 +1,3 @@
+- [ ] pane count, uptime, last used
+- [ ] fuzzy find
+- [ ] session save/load

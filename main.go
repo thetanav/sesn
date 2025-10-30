@@ -6,12 +6,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"tmuxly/internals"
+	"sesn/internals"
 )
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "cli" {
-		fmt.Println("I am a tmux session manager")
+		fmt.Println("I am sesn, a tmux session manager")
 		internals.CreateSession("tanav")
 		return
 	}
