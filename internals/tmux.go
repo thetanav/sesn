@@ -158,3 +158,15 @@ func ParseWindows(output string) []Window {
 	}
 	return windows
 }
+
+func CanaryFuzzy() {
+	cmd := exec.Command("tmux", "list-sessions", "|", "fzf")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Println("Error: ", err)
+	}
+	line := string(out)
+	parts := strings.SplitN(line, ":", 2)
+	sessionName := strings.TrimSpace(parts[0])
+	AttachSession(sessionName)
+}

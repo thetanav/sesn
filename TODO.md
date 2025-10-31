@@ -1,4 +1,4 @@
 - [ ] uptime, last used
-- [ ] fuzzy find
+- [x] fuzzy find
 
 - [ ] session save/load

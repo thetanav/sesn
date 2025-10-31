@@ -271,11 +271,11 @@ func (m model) View() string {
 		var prompt string
 		switch m.inputMode {
 		case inputFuzzy:
-			prompt = "Find: "
+			prompt = "Find:"
 		case inputCreate:
-			prompt = "Create: "
+			prompt = "Create:"
 		case inputRename:
-			prompt = "Rename: "
+			prompt = "Rename:"
 		}
 		header = fmt.Sprintf("%s %s\n", prompt, m.textInput.View())
 	}
