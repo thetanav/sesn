@@ -24,7 +24,6 @@ type inputMode int
 
 const (
 	inputNone inputMode = iota
-	inputFuzzy
 	inputCreate
 	inputRename
 )
@@ -165,9 +164,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, loadSessions
 				}
 			case "/":
-				m.inputMode = inputFuzzy
-				m.textInput.Reset()
-				return m, m.textInput.Focus()
+				internals.CanaryFuzzy()
+				return m, tea.Quit
 			case "enter":
 				if m.selectedSession != "" {
 					internals.AttachSession(m.selectedSession)
@@ -175,18 +173,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "esc":
 				// Nothing to do
-			}
-		case inputFuzzy:
-			switch msg.String() {
-			case "esc":
-				m.inputMode = inputNone
-				m.textInput.Reset()
-				items := make([]list.Item, len(m.sessions))
-				for i, s := range m.sessions {
-					items[i] = item{title: s.Name, desc: ""}
-				}
-				m.sessionList.SetItems(items)
-				return m, nil
 			}
 		case inputCreate, inputRename:
 			switch msg.String() {
@@ -212,28 +198,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd1 tea.Cmd
 		m.sessionList, cmd1 = m.sessionList.Update(msg)
 		cmds = append(cmds, cmd1)
-
-		// Check if session selection changed
-		selectedItem := m.sessionList.SelectedItem()
-		if selectedItem != nil {
-			selected := selectedItem.(item).Title()
-			if selected != m.selectedSession {
-				m.selectedSession = selected
-				cmds = append(cmds, loadWindows(selected))
-			}
-		}
 	} else {
 		m.textInput, cmd = m.textInput.Update(msg)
 		cmds = append(cmds, cmd)
-		if m.inputMode == inputFuzzy {
-			filtered := []list.Item{}
-			query := strings.ToLower(m.textInput.Value())
-			for _, s := range m.sessions {
-				if strings.Contains(strings.ToLower(s.Name), query) {
-					filtered = append(filtered, item{title: s.Name, desc: ""})
-				}
-			}
-			m.sessionList.SetItems(filtered)
+	}
+
+	// Check if session selection changed
+	selectedItem := m.sessionList.SelectedItem()
+	if selectedItem != nil {
+		selected := selectedItem.(item).Title()
+		if selected != m.selectedSession {
+			m.selectedSession = selected
+			cmds = append(cmds, loadWindows(selected))
 		}
 	}
 
@@ -270,8 +246,6 @@ func (m model) View() string {
 	} else {
 		var prompt string
 		switch m.inputMode {
-		case inputFuzzy:
-			prompt = "Find:"
 		case inputCreate:
 			prompt = "Create:"
 		case inputRename:
@@ -297,12 +271,14 @@ func (m model) View() string {
 
 		// Render compact session list (one line per session, minimal padding)
 		leftLines := []string{sessionTitle}
-		for i, s := range m.sessions {
+		items := m.sessionList.Items()
+		for i, it := range items {
+			s := it.(item)
 			prefix := "  "
 			if m.sessionList.Index() == i {
 				prefix = "> "
 			}
-			leftLines = append(leftLines, prefix+s.Name)
+			leftLines = append(leftLines, prefix+s.Title())
 		}
 		left := strings.Join(leftLines, "\n")
 

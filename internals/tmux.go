@@ -160,7 +160,7 @@ func ParseWindows(output string) []Window {
 }
 
 func CanaryFuzzy() {
-	cmd := exec.Command("tmux", "list-sessions", "|", "fzf")
+	cmd := exec.Command("bash", "-c", "tmux list-sessions | fzf")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Println("Error: ", err)
