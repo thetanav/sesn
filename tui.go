@@ -20,13 +20,13 @@ func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
-type mode int
+type inputMode int
 
 const (
-	modeNormal mode = iota
-	modeCreate
-	modeRename
-	modeDelete
+	inputNone inputMode = iota
+	inputFuzzy
+	inputCreate
+	inputRename
 )
 
 type model struct {
@@ -34,7 +34,7 @@ type model struct {
 	windowList      list.Model
 	sessions        []internals.Session
 	windows         []internals.Window
-	mode            mode
+	inputMode       inputMode
 	textInput       textinput.Model
 	selectedSession string
 	width, height   int
@@ -46,6 +46,7 @@ func initialModel() model {
 
 	sessionList := list.New(sessionItems, list.NewDefaultDelegate(), 0, 0)
 	sessionList.SetShowHelp(false)
+	sessionList.SetFilteringEnabled(true)
 
 	windowList := list.New(windowItems, list.NewDefaultDelegate(), 0, 0)
 	windowList.SetShowHelp(false)
@@ -60,7 +61,7 @@ func initialModel() model {
 		windowList:  windowList,
 		sessions:    []internals.Session{},
 		windows:     []internals.Window{},
-		mode:        modeNormal,
+		inputMode:   inputNone,
 		textInput:   ti,
 	}
 }
@@ -138,13 +139,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		// Handle error, maybe show in status
 	case tea.KeyMsg:
-		switch m.mode {
-		case modeNormal:
+		switch m.inputMode {
+		case inputNone:
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "c":
-				m.mode = modeCreate
+				m.inputMode = inputCreate
 				m.textInput.Reset()
 				return m, m.textInput.Focus()
 			case "d":
@@ -154,7 +155,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "r":
 				if m.selectedSession != "" {
-					m.mode = modeRename
+					m.inputMode = inputRename
 					m.textInput.Reset()
 					return m, m.textInput.Focus()
 				}
@@ -163,40 +164,59 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					internals.DeleteSession(m.selectedSession)
 					return m, loadSessions
 				}
+			case "/":
+				m.inputMode = inputFuzzy
+				m.textInput.Reset()
+				return m, m.textInput.Focus()
 			case "enter":
 				if m.selectedSession != "" {
 					internals.AttachSession(m.selectedSession)
 					return m, tea.Quit
 				}
+			case "esc":
+				// Nothing to do
 			}
-		case modeCreate, modeRename:
+		case inputFuzzy:
+			switch msg.String() {
+			case "esc":
+				m.inputMode = inputNone
+				m.textInput.Reset()
+				items := make([]list.Item, len(m.sessions))
+				for i, s := range m.sessions {
+					items[i] = item{title: s.Name, desc: ""}
+				}
+				m.sessionList.SetItems(items)
+				return m, nil
+			}
+		case inputCreate, inputRename:
 			switch msg.String() {
 			case "enter":
 				name := strings.TrimSpace(m.textInput.Value())
 				if name != "" {
-					if m.mode == modeCreate {
+					if m.inputMode == inputCreate {
 						internals.CreateSession(name)
 					} else {
 						internals.RenameSession(m.selectedSession, name)
 					}
-					m.mode = modeNormal
+					m.inputMode = inputNone
 					return m, loadSessions
 				}
 			case "esc":
-				m.mode = modeNormal
+				m.inputMode = inputNone
 				return m, nil
 			}
 		}
 	}
 
-	if m.mode == modeNormal {
+	if m.inputMode == inputNone {
 		var cmd1 tea.Cmd
 		m.sessionList, cmd1 = m.sessionList.Update(msg)
 		cmds = append(cmds, cmd1)
 
 		// Check if session selection changed
-		if m.sessionList.Index() >= 0 && m.sessionList.Index() < len(m.sessions) {
-			selected := m.sessions[m.sessionList.Index()].Name
+		selectedItem := m.sessionList.SelectedItem()
+		if selectedItem != nil {
+			selected := selectedItem.(item).Title()
 			if selected != m.selectedSession {
 				m.selectedSession = selected
 				cmds = append(cmds, loadWindows(selected))
@@ -205,6 +225,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	} else {
 		m.textInput, cmd = m.textInput.Update(msg)
 		cmds = append(cmds, cmd)
+		if m.inputMode == inputFuzzy {
+			filtered := []list.Item{}
+			query := strings.ToLower(m.textInput.Value())
+			for _, s := range m.sessions {
+				if strings.Contains(strings.ToLower(s.Name), query) {
+					filtered = append(filtered, item{title: s.Name, desc: ""})
+				}
+			}
+			m.sessionList.SetItems(filtered)
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -229,22 +259,36 @@ func truncateLines(s string, maxWidth int) string {
 }
 
 func (m model) View() string {
-	if m.mode == modeNormal {
-		ascii := `  ___  ___  ___ _ __  
+	ascii := `  ___  ___  ___ _ __  
  / __|/ _ \/ __| '_ \ 
  \__ \  __/\__ \ | | |
  |___/\___||___/_| |_|
-`
-		header := "c: create  d: delete  r: rename  k: kill  enter: attach"
+`		
+	var header string
+	if m.inputMode == inputNone {
+		header = "c: create  d: delete  r: rename\nk: kill  enter: attach  /: fuzzy find\n"
+	} else {
+		var prompt string
+		switch m.inputMode {
+		case inputFuzzy:
+			prompt = "Find: "
+		case inputCreate:
+			prompt = "Create: "
+		case inputRename:
+			prompt = "Rename: "
+		}
+		header = fmt.Sprintf("%s %s\n", prompt, m.textInput.View())
+	}
+
 
 		// Determine column widths (fall back if not set yet)
 		leftW := m.width/2
 		if leftW <= 0 {
-			leftW = 30
+			leftW = 20
 		}
 		rightW := m.width - leftW - 1
 		if rightW <= 0 {
-			rightW = 30
+			rightW = 20
 		}
 
 		// Compose titled columns
@@ -277,13 +321,4 @@ func (m model) View() string {
 
 		body := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
 		return ascii + "\n" + header + "\n" + body
-	} else {
-		var prompt string
-		if m.mode == modeCreate {
-			prompt = "Create:"
-		} else {
-			prompt = "Rename:"
-		}
-		return fmt.Sprintf("%s %s", prompt, m.textInput.View())
-	}
 }
