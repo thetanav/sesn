@@ -18,7 +18,7 @@ This will:
 - Clone the repository
 - Build the binary
 - Install it to `/usr/local/bin` (requires sudo)
-
+c
 ### Custom Install Location
 
 If you want to install to a different location (e.g., user directory):

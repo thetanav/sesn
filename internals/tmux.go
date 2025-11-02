@@ -1,6 +1,7 @@
 package internals
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -25,40 +26,39 @@ type Window struct {
 	Active  bool
 }
 
-func CreateSession(name string) {
+type SavedSession struct {
+	Name    string   `json:"name"`
+	Windows []string `json:"windows"`
+}
+
+func CreateSession(name string) error {
 	cmd := exec.Command("tmux", "new-session", "-d", "-s", name)
 	_, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Println("Error: ", err)
-	}
+	return err
 }
 
-func DeleteSession(name string) {
+func DeleteSession(name string) error {
 	cmd := exec.Command("tmux", "kill-session", "-t", name)
 	_, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Println("Error: ", err)
-	}
+	return err
 }
 
-func RenameSession(old string, new string) {
+func RenameSession(old string, new string) error {
 	cmd := exec.Command("tmux", "rename-session", "-t", old, new)
 	_, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Println("Error", err)
-	}
+	return err
 }
 
-func AttachSession(name string) {
+func AttachSession(name string) error {
 	path, err := exec.LookPath("tmux")
 	if err != nil {
-		fmt.Println("Error finding tmux:", err)
-		return
+		return fmt.Errorf("error finding tmux: %v", err)
 	}
 	err = syscall.Exec(path, []string{"tmux", "attach-session", "-t", name}, os.Environ())
 	if err != nil {
-		fmt.Println("Error attaching to session:", err)
+		return fmt.Errorf("error attaching to session: %v", err)
 	}
+	return nil
 }
 
 func ListSessions() ([]Session, error) {
@@ -79,13 +79,10 @@ func ListWindows(name string) ([]Window, error) {
 	return ParseWindows(string(out)), nil
 }
 
-func CheckTmux() {
+func CheckTmux() bool {
 	cmd := exec.Command("tmux", "-V")
 	_, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Println("Error: ", err)
-	}
-	fmt.Println("Tmux installed")
+	return err == nil
 }
 
 func ParseSessions(output string) []Session {
@@ -159,14 +156,68 @@ func ParseWindows(output string) []Window {
 	return windows
 }
 
-func CanaryFuzzy() {
+func SaveSession(name string) error {
+	windows, err := ListWindows(name)
+	if err != nil {
+		return err
+	}
+	var winNames []string
+	for _, w := range windows {
+		winNames = append(winNames, w.Name)
+	}
+	saved := SavedSession{Name: name, Windows: winNames}
+	data, err := json.Marshal(saved)
+	if err != nil {
+		return err
+	}
+	filename := name + ".json"
+	return os.WriteFile(filename, data, 0644)
+}
+
+func LoadSession(name string) error {
+	filename := name + ".json"
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	var saved SavedSession
+	err = json.Unmarshal(data, &saved)
+	if err != nil {
+		return err
+	}
+	// Create session
+	err = CreateSession(saved.Name)
+	if err != nil {
+		return err
+	}
+	// Create windows
+	for i, winName := range saved.Windows {
+		if i == 0 {
+			// First window is already created
+			cmd := exec.Command("tmux", "rename-window", "-t", fmt.Sprintf("%s:0", saved.Name), winName)
+			_, err = cmd.CombinedOutput()
+			if err != nil {
+				return err
+			}
+		} else {
+			cmd := exec.Command("tmux", "new-window", "-t", saved.Name, "-n", winName)
+			_, err = cmd.CombinedOutput()
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func CanaryFuzzy() error {
 	cmd := exec.Command("bash", "-c", "tmux list-sessions | fzf")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Println("Error: ", err)
+		return fmt.Errorf("error running fuzzy finder: %v", err)
 	}
 	line := string(out)
 	parts := strings.SplitN(line, ":", 2)
 	sessionName := strings.TrimSpace(parts[0])
-	AttachSession(sessionName)
+	return AttachSession(sessionName)
 }

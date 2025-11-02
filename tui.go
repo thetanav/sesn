@@ -26,6 +26,8 @@ const (
 	inputNone inputMode = iota
 	inputCreate
 	inputRename
+	inputConfirmDelete
+	inputLoad
 )
 
 type model struct {
@@ -36,6 +38,7 @@ type model struct {
 	inputMode       inputMode
 	textInput       textinput.Model
 	selectedSession string
+	status          string
 	width, height   int
 }
 
@@ -119,7 +122,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sessions = msg.sessions
 		items := make([]list.Item, len(m.sessions))
 		for i, s := range m.sessions {
-			items[i] = item{title: s.Name, desc: ""}
+			desc := fmt.Sprintf("Windows: %d, Created: %s", s.Windows, s.Created)
+			if s.Attached {
+				desc += " (attached)"
+			}
+			items[i] = item{title: s.Name, desc: desc}
 		}
 		cmd = m.sessionList.SetItems(items)
 		cmds = append(cmds, cmd)
@@ -131,12 +138,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windows = msg.windows
 		items := make([]list.Item, len(m.windows))
 		for i, w := range m.windows {
-			items[i] = item{title: fmt.Sprintf("%d: %s", w.Index, w.Name), desc: ""}
+			desc := fmt.Sprintf("Panes: %d, Size: %s", w.Panes, w.Size)
+			if w.Active {
+				desc += " (active)"
+			}
+			items[i] = item{title: fmt.Sprintf("%d: %s", w.Index, w.Name), desc: desc}
 		}
 		cmd = m.windowList.SetItems(items)
 		cmds = append(cmds, cmd)
 	case errMsg:
-		// Handle error, maybe show in status
+		m.status = msg.err.Error()
 	case tea.KeyMsg:
 		switch m.inputMode {
 		case inputNone:
@@ -147,10 +158,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.inputMode = inputCreate
 				m.textInput.Reset()
 				return m, m.textInput.Focus()
-			case "d":
+			case "d", "k":
 				if m.selectedSession != "" {
-					internals.DeleteSession(m.selectedSession)
-					return m, loadSessions
+					m.inputMode = inputConfirmDelete
 				}
 			case "r":
 				if m.selectedSession != "" {
@@ -158,36 +168,73 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.textInput.Reset()
 					return m, m.textInput.Focus()
 				}
-			case "k":
+			case "s":
 				if m.selectedSession != "" {
-					internals.DeleteSession(m.selectedSession)
-					return m, loadSessions
+					err := internals.SaveSession(m.selectedSession)
+					if err != nil {
+						m.status = err.Error()
+					}
 				}
+			case "l":
+				m.inputMode = inputLoad
+				m.textInput.Reset()
+				return m, m.textInput.Focus()
 			case "/":
-				internals.CanaryFuzzy()
+				err := internals.CanaryFuzzy()
+				if err != nil {
+					m.status = err.Error()
+					return m, nil
+				}
 				return m, tea.Quit
 			case "enter":
 				if m.selectedSession != "" {
-					internals.AttachSession(m.selectedSession)
+					err := internals.AttachSession(m.selectedSession)
+					if err != nil {
+						m.status = err.Error()
+						return m, nil
+					}
 					return m, tea.Quit
 				}
 			case "esc":
 				// Nothing to do
 			}
-		case inputCreate, inputRename:
+		case inputCreate, inputRename, inputLoad:
 			switch msg.String() {
 			case "enter":
 				name := strings.TrimSpace(m.textInput.Value())
 				if name != "" {
+					var err error
 					if m.inputMode == inputCreate {
-						internals.CreateSession(name)
-					} else {
-						internals.RenameSession(m.selectedSession, name)
+						err = internals.CreateSession(name)
+					} else if m.inputMode == inputRename {
+						err = internals.RenameSession(m.selectedSession, name)
+					} else if m.inputMode == inputLoad {
+						err = internals.LoadSession(name)
+					}
+					if err != nil {
+						m.status = err.Error()
+						m.inputMode = inputNone
+						return m, nil
 					}
 					m.inputMode = inputNone
 					return m, loadSessions
 				}
 			case "esc":
+				m.inputMode = inputNone
+				return m, nil
+			}
+		case inputConfirmDelete:
+			switch msg.String() {
+			case "y", "Y":
+				err := internals.DeleteSession(m.selectedSession)
+				if err != nil {
+					m.status = err.Error()
+					m.inputMode = inputNone
+					return m, nil
+				}
+				m.inputMode = inputNone
+				return m, loadSessions
+			case "n", "N", "esc":
 				m.inputMode = inputNone
 				return m, nil
 			}
@@ -235,66 +282,70 @@ func truncateLines(s string, maxWidth int) string {
 }
 
 func (m model) View() string {
-	ascii := `  ___  ___  ___ _ __  
- / __|/ _ \/ __| '_ \ 
- \__ \  __/\__ \ | | |
- |___/\___||___/_| |_|
-`		
+	sesnStyle := lipgloss.NewStyle().Background(lipgloss.Color("11")).Foreground(lipgloss.Color("0")).Bold(true).Padding(0, 1)
+	sesn := sesnStyle.Render("sesn")
 	var header string
 	if m.inputMode == inputNone {
-		header = "c: create  d: delete  r: rename\nk: kill  enter: attach  /: fuzzy find\n"
+		header = "c: create  d: delete  r: rename\nk: kill  s: save  l: load  enter: attach  /: fuzzy find\n"
 	} else {
-		var prompt string
 		switch m.inputMode {
 		case inputCreate:
-			prompt = "Create:"
+			header = fmt.Sprintf("Create: %s\n", m.textInput.View())
 		case inputRename:
-			prompt = "Rename:"
+			header = fmt.Sprintf("Rename: %s\n", m.textInput.View())
+		case inputConfirmDelete:
+			header = fmt.Sprintf("Delete session '%s'? (y/N)\n", m.selectedSession)
+		case inputLoad:
+			header = fmt.Sprintf("Load: %s\n", m.textInput.View())
 		}
-		header = fmt.Sprintf("%s %s\n", prompt, m.textInput.View())
 	}
 
+	// Determine column widths (fall back if not set yet)
+	leftW := m.width / 2
+	if leftW <= 0 {
+		leftW = 20
+	}
+	rightW := m.width - leftW - 1
+	if rightW <= 0 {
+		rightW = 20
+	}
 
-		// Determine column widths (fall back if not set yet)
-		leftW := m.width/2
-		if leftW <= 0 {
-			leftW = 20
+	// Compose titled columns
+	sessionTitle := lipgloss.NewStyle().Bold(true).Render("sessions")
+	windowTitle := lipgloss.NewStyle().Bold(true).Render("windows")
+
+	// Render compact session list (one line per session, minimal padding)
+	leftLines := []string{sessionTitle}
+	items := m.sessionList.Items()
+	for i, it := range items {
+		s := it.(item)
+		prefix := "  "
+		if m.sessionList.Index() == i {
+			prefix = "> "
 		}
-		rightW := m.width - leftW - 1
-		if rightW <= 0 {
-			rightW = 20
-		}
+		leftLines = append(leftLines, prefix+s.Title())
+	}
+	left := strings.Join(leftLines, "\n")
 
-		// Compose titled columns
-		sessionTitle := lipgloss.NewStyle().Bold(true).Render("sessions")
-		windowTitle := lipgloss.NewStyle().Bold(true).Render("windows")
+	// Render compact window list
+	rightLines := []string{windowTitle}
+	for _, w := range m.windows {
+		// Show index and name compactly without selection indicator
+		rightLines = append(rightLines, fmt.Sprintf("%d: %s", w.Index, w.Name))
+	}
+	right := strings.Join(rightLines, "\n")
 
-		// Render compact session list (one line per session, minimal padding)
-		leftLines := []string{sessionTitle}
-		items := m.sessionList.Items()
-		for i, it := range items {
-			s := it.(item)
-			prefix := "  "
-			if m.sessionList.Index() == i {
-				prefix = "> "
-			}
-			leftLines = append(leftLines, prefix+s.Title())
-		}
-		left := strings.Join(leftLines, "\n")
-
-		// Render compact window list
-		rightLines := []string{windowTitle}
-		for _, w := range m.windows {
-			// Show index and name compactly without selection indicator
-			rightLines = append(rightLines, fmt.Sprintf("%d: %s", w.Index, w.Name))
-		}
-		right := strings.Join(rightLines, "\n")
-
-		// Ensure each column renders within its width
+	// Ensure each column renders within its width
 	// Truncate each column to its width to keep layout compact
 	leftStyled := lipgloss.NewStyle().Width(leftW).Align(lipgloss.Left).Render(truncateLines(left, leftW))
 	rightStyled := lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(truncateLines(right, rightW))
 
-		body := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
-		return ascii + "\n" + header + "\n" + body
+	body := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
+	result := body + "\n" + header
+	if m.status != "" {
+		statusStyled := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(m.status)
+		result += "\n" + statusStyled
+	}
+	result += "\n" + sesn
+	return result
 }
