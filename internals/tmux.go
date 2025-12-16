@@ -33,20 +33,26 @@ type SavedSession struct {
 
 func CreateSession(name string) error {
 	cmd := exec.Command("tmux", "new-session", "-d", "-s", name)
-	_, err := cmd.CombinedOutput()
-	return err
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create session")
+	}
+	return nil
 }
 
 func DeleteSession(name string) error {
 	cmd := exec.Command("tmux", "kill-session", "-t", name)
-	_, err := cmd.CombinedOutput()
-	return err
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to delete session")
+	}
+	return nil
 }
 
 func RenameSession(old string, new string) error {
 	cmd := exec.Command("tmux", "rename-session", "-t", old, new)
-	_, err := cmd.CombinedOutput()
-	return err
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to rename session")
+	}
+	return nil
 }
 
 func AttachSession(name string) error {
@@ -63,18 +69,18 @@ func AttachSession(name string) error {
 
 func ListSessions() ([]Session, error) {
 	cmd := exec.Command("tmux", "list-sessions")
-	out, err := cmd.CombinedOutput()
+	out, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("no sessions")
 	}
 	return ParseSessions(string(out)), nil
 }
 
 func ListWindows(name string) ([]Window, error) {
 	cmd := exec.Command("tmux", "list-windows", "-t", name)
-	out, err := cmd.CombinedOutput()
+	out, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list windows")
 	}
 	return ParseWindows(string(out)), nil
 }
@@ -159,7 +165,7 @@ func ParseWindows(output string) []Window {
 func SaveSession(name string) error {
 	windows, err := ListWindows(name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to save session")
 	}
 	var winNames []string
 	for _, w := range windows {
@@ -168,42 +174,41 @@ func SaveSession(name string) error {
 	saved := SavedSession{Name: name, Windows: winNames}
 	data, err := json.Marshal(saved)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to save session")
 	}
 	filename := name + ".json"
-	return os.WriteFile(filename, data, 0644)
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return fmt.Errorf("failed to save session")
+	}
+	return nil
 }
 
 func LoadSession(name string) error {
 	filename := name + ".json"
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return err
+		return fmt.Errorf("session file not found")
 	}
 	var saved SavedSession
-	err = json.Unmarshal(data, &saved)
-	if err != nil {
-		return err
+	if err := json.Unmarshal(data, &saved); err != nil {
+		return fmt.Errorf("invalid session file")
 	}
 	// Create session
-	err = CreateSession(saved.Name)
-	if err != nil {
-		return err
+	if err := CreateSession(saved.Name); err != nil {
+		return fmt.Errorf("failed to create session")
 	}
 	// Create windows
 	for i, winName := range saved.Windows {
 		if i == 0 {
 			// First window is already created
 			cmd := exec.Command("tmux", "rename-window", "-t", fmt.Sprintf("%s:0", saved.Name), winName)
-			_, err = cmd.CombinedOutput()
-			if err != nil {
-				return err
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to load session")
 			}
 		} else {
 			cmd := exec.Command("tmux", "new-window", "-t", saved.Name, "-n", winName)
-			_, err = cmd.CombinedOutput()
-			if err != nil {
-				return err
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to load session")
 			}
 		}
 	}
@@ -212,9 +217,9 @@ func LoadSession(name string) error {
 
 func CanaryFuzzy() error {
 	cmd := exec.Command("bash", "-c", "tmux list-sessions | fzf")
-	out, err := cmd.CombinedOutput()
+	out, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("error running fuzzy finder: %v", err)
+		return fmt.Errorf("fuzzy finder cancelled")
 	}
 	line := string(out)
 	parts := strings.SplitN(line, ":", 2)

@@ -282,21 +282,23 @@ func truncateLines(s string, maxWidth int) string {
 }
 
 func (m model) View() string {
-	sesnStyle := lipgloss.NewStyle().Background(lipgloss.Color("11")).Foreground(lipgloss.Color("0")).Bold(true).Padding(0, 1)
-	sesn := sesnStyle.Render("sesn")
+	// Minimal title bar
+	sesnStyle := lipgloss.NewStyle().Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15")).Bold(true).Padding(0, 1)
+	sesn := sesnStyle.Render(" sesn ")
+
 	var header string
 	if m.inputMode == inputNone {
-		header = "c: create  d: delete  r: rename\nk: kill  s: save  l: load  enter: attach  /: fuzzy find\n"
+		header = "  c: create   d: delete   r: rename   k: kill   s: save   l: load\n  enter: attach   /: fuzzy\n"
 	} else {
 		switch m.inputMode {
 		case inputCreate:
-			header = fmt.Sprintf("Create: %s\n", m.textInput.View())
+			header = fmt.Sprintf("  Create: %s\n", m.textInput.View())
 		case inputRename:
-			header = fmt.Sprintf("Rename: %s\n", m.textInput.View())
+			header = fmt.Sprintf("  Rename: %s\n", m.textInput.View())
 		case inputConfirmDelete:
-			header = fmt.Sprintf("Delete session '%s'? (y/N)\n", m.selectedSession)
+			header = fmt.Sprintf("  Delete '%s'? (y/N)\n", m.selectedSession)
 		case inputLoad:
-			header = fmt.Sprintf("Load: %s\n", m.textInput.View())
+			header = fmt.Sprintf("  Load: %s\n", m.textInput.View())
 		}
 	}
 
@@ -310,12 +312,12 @@ func (m model) View() string {
 		rightW = 20
 	}
 
-	// Compose titled columns
-	sessionTitle := lipgloss.NewStyle().Bold(true).Render("sessions")
-	windowTitle := lipgloss.NewStyle().Bold(true).Render("windows")
+	// Compose titled columns with better spacing
+	sessionTitle := lipgloss.NewStyle().Bold(true).Render("SESSIONS")
+	windowTitle := lipgloss.NewStyle().Bold(true).Render("WINDOWS")
 
-	// Render compact session list (one line per session, minimal padding)
-	leftLines := []string{sessionTitle}
+	// Render compact session list with proper spacing
+	leftLines := []string{"", sessionTitle, ""}
 	items := m.sessionList.Items()
 	for i, it := range items {
 		s := it.(item)
@@ -325,27 +327,31 @@ func (m model) View() string {
 		}
 		leftLines = append(leftLines, prefix+s.Title())
 	}
+	leftLines = append(leftLines, "")
 	left := strings.Join(leftLines, "\n")
 
-	// Render compact window list
-	rightLines := []string{windowTitle}
+	// Render compact window list with proper spacing
+	rightLines := []string{"", windowTitle, ""}
 	for _, w := range m.windows {
-		// Show index and name compactly without selection indicator
-		rightLines = append(rightLines, fmt.Sprintf("%d: %s", w.Index, w.Name))
+		rightLines = append(rightLines, fmt.Sprintf("  %d: %s", w.Index, w.Name))
 	}
+	rightLines = append(rightLines, "")
 	right := strings.Join(rightLines, "\n")
 
 	// Ensure each column renders within its width
-	// Truncate each column to its width to keep layout compact
 	leftStyled := lipgloss.NewStyle().Width(leftW).Align(lipgloss.Left).Render(truncateLines(left, leftW))
 	rightStyled := lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(truncateLines(right, rightW))
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
-	result := body + "\n" + header
+
+	// Build result with proper spacing
+	result := sesn + "\n\n" + body + "\n\n" + header
+
+	// Only show status if there's an error
 	if m.status != "" {
-		statusStyled := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(m.status)
+		statusStyled := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("  ✗ " + m.status)
 		result += "\n" + statusStyled
 	}
-	result += "\n" + sesn
+
 	return result
 }

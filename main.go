@@ -26,7 +26,7 @@ func main() {
 
 	p := tea.NewProgram(initialModel())
 	if _, err := p.Run(); err != nil {
-		fmt.Printf("Error: %v", err)
+		// Silently exit on errors - user-friendly messages are shown in the TUI
 		os.Exit(1)
 	}
 }

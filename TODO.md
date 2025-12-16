@@ -1,5 +1,5 @@
 - [x] uptime, last used
 - [x] confirmation when deleting
 - [x] fuzzy find
-
+- [ ] x for kill so the vim key K works
 - [x] session save/load
