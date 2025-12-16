@@ -6,27 +6,32 @@ A tmux session manager with a beautiful TUI.
 
 ### Easy Install (Recommended)
 
-Run this one-liner to install sesn:
+Clone the repository and run the install script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thetanav/sesn/main/install.sh | bash
+git clone https://github.com/thetanav/sesn.git
+cd sesn
+./install.sh
 ```
 
 This will:
 
 - Check for required dependencies (Go, tmux, git)
-- Clone the repository
-- Build the binary
-- Install it to `/usr/local/bin` (requires sudo)
-c
+- Build the binary from source
+- Install it to `~/bin` (or `/usr/local/bin` if run as root)
+
 ### Custom Install Location
 
-If you want to install to a different location (e.g., user directory):
+If you want to install to a different location:
 
 ```bash
-export INSTALL_DIR=$HOME/bin
-curl -fsSL https://raw.githubusercontent.com/thetanav/sesn/main/install.sh | bash
+git clone https://github.com/thetanav/sesn.git
+cd sesn
+export INSTALL_DIR=/path/to/install
+./install.sh
 ```
+
+Note: Ensure the install directory is in your PATH.
 
 ### Building from source
 
@@ -37,6 +42,8 @@ git clone https://github.com/thetanav/sesn.git
 cd sesn
 go build -o sesn .
 ```
+
+Then move `sesn` to your PATH (e.g., `sudo mv sesn /usr/local/bin/`)
 
 ## Usage
 

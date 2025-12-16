@@ -15,8 +15,13 @@ NC='\033[0m' # No Color
 # Configuration
 REPO_URL="https://github.com/thetanav/sesn.git"
 BINARY_NAME="sesn"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-TEMP_DIR=$(mktemp -d)
+if [ -z "$INSTALL_DIR" ]; then
+    if [ "$EUID" -eq 0 ]; then
+        INSTALL_DIR="/usr/local/bin"
+    else
+        INSTALL_DIR="$HOME/bin"
+    fi
+fi
 
 # Helper functions
 log_info() {
@@ -35,13 +40,7 @@ log_error() {
     echo -e "${RED}✗${NC} $1"
 }
 
-cleanup() {
-    if [ -d "$TEMP_DIR" ]; then
-        rm -rf "$TEMP_DIR"
-    fi
-}
 
-trap cleanup EXIT
 
 # Check if command exists
 command_exists() {
@@ -88,20 +87,17 @@ check_dependencies() {
     log_success "All dependencies are installed"
 }
 
-# Clone repository
-clone_repo() {
-    log_info "Cloning sesn repository..."
-    if ! git clone "$REPO_URL" "$TEMP_DIR"; then
-        log_error "Failed to clone repository"
+# Check if in repository
+check_repo() {
+    if [ ! -f "go.mod" ] || [ ! -f "main.go" ]; then
+        log_error "Not in sesn repository directory. Please run this script from the sesn repo or clone it first."
         exit 1
     fi
-    log_success "Repository cloned successfully"
 }
 
 # Build binary
 build_binary() {
     log_info "Building sesn binary..."
-    cd "$TEMP_DIR"
     if ! go build -o "$BINARY_NAME" .; then
         log_error "Failed to build sesn"
         exit 1
@@ -119,7 +115,7 @@ install_binary() {
     fi
 
     # Move binary to install location
-    if ! mv "$TEMP_DIR/$BINARY_NAME" "$INSTALL_DIR/"; then
+    if ! mv "$BINARY_NAME" "$INSTALL_DIR/"; then
         log_error "Failed to install binary to $INSTALL_DIR"
         exit 1
     fi
@@ -138,6 +134,9 @@ verify_installation() {
         sesn --help >/dev/null 2>&1 || log_warning "sesn installed but may not be fully functional"
     else
         log_warning "sesn installed but not found in PATH. You may need to restart your shell or add $INSTALL_DIR to your PATH"
+        log_info "To add it permanently, add this line to your ~/.bashrc or ~/.zshrc:"
+        log_info "  export PATH=\"\$PATH:$INSTALL_DIR\""
+        log_info "Then restart your shell or run: source ~/.bashrc"
         log_info "You can run it directly: $INSTALL_DIR/sesn"
     fi
 }
@@ -174,9 +173,8 @@ main() {
     echo "Installing sesn - A tmux session manager with a beautiful TUI"
     echo
 
-    check_permissions
     check_dependencies
-    clone_repo
+    check_repo
     build_binary
     install_binary
     verify_installation
